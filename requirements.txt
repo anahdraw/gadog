@@ -1,4 +1,11 @@
+# ─────────────────────────────────────────────────────────────
+# Prediksi Harga Rumah — Streamlit App
+# Cara install: pip install -r requirements.txt
+# Cara jalankan: streamlit run app.py
+# ─────────────────────────────────────────────────────────────
+
 streamlit>=1.32.0
+Orange3>=3.36.0
+numpy>=1.24.0
 pandas>=2.0.0
-numpy>=1.26.0
-scikit-learn>=1.4.0
+scikit-learn>=1.3.0
