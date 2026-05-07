@@ -1,36 +1,74 @@
 import sys
 import types
+import importlib.abc
+import importlib.machinery
 from unittest.mock import MagicMock
 
 # ─────────────────────────────────────────────────────────────
 # Orange3 menggunakan Qt dan orangecanvas untuk modul widgets-nya.
 # Kita hanya butuh bagian prediksi (Orange.tree, Orange.data),
 # sehingga semua import dari orangecanvas.* dan AnyQt.*
-# di-mock agar tidak memerlukan Qt / GUI dependencies.
+# di-stub agar tidak memerlukan Qt / GUI dependencies.
 #
-# Strategi: gabungan dua pendekatan —
-#   1. Inject MagicMock langsung ke sys.modules untuk modul yang
-#      sudah diketahui gagal (paling andal, bypass import machinery).
-#   2. Custom meta-path finder sebagai jaring pengaman untuk
-#      submodule lain yang mungkin di-import secara dinamis.
+# PENTING: orangecanvas.localization.si berisi fungsi plsi(),
+# plsi_sz(), z_besedo() yang dipanggil saat definisi kelas
+# di Orange.data.variable. Fungsi-fungsi ini HARUS mengembalikan
+# string asli (bukan MagicMock), agar class attributes terbentuk
+# dengan benar dan pickle bisa me-reconstruct objek model.
 # ─────────────────────────────────────────────────────────────
 
 _MOCK_PREFIXES = ("orangecanvas", "AnyQt", "Orange.widgets")
 
-# ── Pendekatan 1: langsung inject ke sys.modules ────────────
-# Daftar modul yang diketahui di-import oleh Orange3 saat unpickle
-_KNOWN_MOCKS = [
-    "orangecanvas",
-    "orangecanvas.localization",
-    "orangecanvas.localization.si",
-    "AnyQt",
-    "AnyQt.QtCore",
-    "AnyQt.QtGui",
-    "AnyQt.QtWidgets",
+# ── Buat stub modul orangecanvas.localization.si ────────────
+# Fungsi-fungsi ini dipakai untuk i18n/pluralisasi di Orange3.
+# Kita cukup kembalikan string apa adanya tanpa terjemahan.
+
+
+def _plsi(n, *forms):
+    """Stub pluralisasi: kembalikan form pertama."""
+    return forms[0] if forms else ""
+
+
+def _plsi_sz(n, *forms):
+    """Stub pluralisasi dengan angka."""
+    return f"{n} {forms[0]}" if forms else str(n)
+
+
+def _z_besedo(*args):
+    """Stub z_besedo: kembalikan argumen pertama."""
+    return args[0] if args else ""
+
+
+# Bangun modul orangecanvas.localization.si secara manual
+_oc = types.ModuleType("orangecanvas")
+_oc.__path__ = []
+_oc.__package__ = "orangecanvas"
+
+_oc_loc = types.ModuleType("orangecanvas.localization")
+_oc_loc.__path__ = []
+_oc_loc.__package__ = "orangecanvas"
+
+_oc_loc_si = types.ModuleType("orangecanvas.localization.si")
+_oc_loc_si.__package__ = "orangecanvas.localization"
+_oc_loc_si.plsi = _plsi
+_oc_loc_si.plsi_sz = _plsi_sz
+_oc_loc_si.z_besedo = _z_besedo
+
+# Hubungkan parent ↔ child
+_oc.localization = _oc_loc
+_oc_loc.si = _oc_loc_si
+
+sys.modules["orangecanvas"] = _oc
+sys.modules["orangecanvas.localization"] = _oc_loc
+sys.modules["orangecanvas.localization.si"] = _oc_loc_si
+
+# ── Inject MagicMock untuk modul GUI lain ───────────────────
+_OTHER_MOCKS = [
+    "AnyQt", "AnyQt.QtCore", "AnyQt.QtGui", "AnyQt.QtWidgets",
     "Orange.widgets",
 ]
 
-for _mod_name in _KNOWN_MOCKS:
+for _mod_name in _OTHER_MOCKS:
     if _mod_name not in sys.modules:
         _mock = MagicMock()
         _mock.__name__ = _mod_name
@@ -40,16 +78,12 @@ for _mod_name in _KNOWN_MOCKS:
         sys.modules[_mod_name] = _mock
 
 
-# ── Pendekatan 2: meta-path finder sebagai fallback ─────────
-import importlib.abc
-import importlib.machinery
-
+# ── Meta-path finder sebagai fallback ───────────────────────
 
 class _AutoMockFinder(importlib.abc.MetaPathFinder):
     """Intercept import dari namespace tertentu dan kembalikan MagicMock."""
 
     def find_spec(self, fullname, path, target=None):
-        # Jika sudah ada di sys.modules (dari inject di atas), skip
         if fullname in sys.modules:
             return None
         if any(fullname == p or fullname.startswith(p + ".") for p in _MOCK_PREFIXES):
@@ -59,21 +93,18 @@ class _AutoMockFinder(importlib.abc.MetaPathFinder):
 
 class _AutoMockLoader(importlib.abc.Loader):
     def create_module(self, spec):
-        mod = MagicMock()
-        mod.__name__ = spec.name
+        mod = types.ModuleType(spec.name)
         mod.__loader__ = self
         mod.__package__ = spec.name.rpartition(".")[0]
         mod.__spec__ = spec
-        mod.__path__ = []          # agar dianggap package
-        # Langsung simpan ke sys.modules agar tidak di-resolve ulang
+        mod.__path__ = []
         sys.modules[spec.name] = mod
         return mod
 
     def exec_module(self, module):
-        pass                       # tidak ada kode yang perlu dieksekusi
+        pass
 
 
-# Pasang finder di urutan pertama agar berjalan sebelum finder lain
 sys.meta_path.insert(0, _AutoMockFinder())
 
 import pickle
