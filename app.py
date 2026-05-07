@@ -24,7 +24,7 @@ st.set_page_config(
 # PATH MODEL — gunakan path relatif agar kompatibel dengan Streamlit Cloud
 # Pastikan file model_orange.pickle ada di root repository GitHub yang sama
 # ─────────────────────────────────────────────
-MODEL_PATH = Path(__file__).parent / "treehouse.pickle"
+MODEL_PATH = Path(__file__).parent / "model_orange.pickle"
 
 # ─────────────────────────────────────────────
 # KONFIGURASI FITUR
