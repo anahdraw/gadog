@@ -1,4 +1,14 @@
-streamlit
-pandas
-numpy
-scikit-learn
+streamlit>=1.32.0
+pandas>=2.0.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+
+# Orange3 — gunakan versi yang stabil di Linux headless
+orange3>=3.36.0
+
+# AnyQt dibutuhkan oleh Orange sebagai Qt abstraction layer.
+# Di server headless (Streamlit Cloud), kita tidak memerlukan GUI backend.
+# PyQt5 di-install agar AnyQt punya backend yang bisa di-import,
+# namun Qt akan berjalan di mode offscreen (QT_QPA_PLATFORM=offscreen).
+anyqt>=0.2.0
+PyQt5>=5.15.0

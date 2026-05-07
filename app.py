@@ -4,6 +4,17 @@ Berbasis model Orange Data Mining (Decision Tree Regressor)
 Dijalankan di Streamlit Cloud
 """
 
+# ─────────────────────────────────────────────
+# WAJIB: Set environment SEBELUM import apapun dari Orange.
+# Orange mencoba init Qt GUI saat di-import; variabel ini memaksa
+# mode headless / offscreen sehingga tidak butuh PyQt/PySide.
+# ─────────────────────────────────────────────
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("DISPLAY", ":99")                  # dummy display Linux
+os.environ.setdefault("ORANGE_DEPRECATIONS_ERROR", "0")
+os.environ.setdefault("ANYQT_BACKEND", "")               # paksa AnyQt tanpa backend
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -108,6 +119,13 @@ def load_model():
     """
     Memuat model dari file pickle.
     Mengembalikan (model, error_message).
+
+    Strategi headless-safe:
+    1. Pastikan env vars Qt sudah di-set (dilakukan di top-level modul).
+    2. Pre-import modul Orange.data & Orange.tree secara eksplisit
+       SEBELUM pickle.load, agar pickle tidak memicu inisialisasi Qt
+       di saat yang tidak terduga.
+    3. Bungkus dalam try/except berlapis untuk pesan error yang jelas.
     """
     if not MODEL_PATH.exists():
         return None, (
@@ -115,12 +133,27 @@ def load_model():
             "Pastikan file **model_orange.pickle** sudah ada di root repository GitHub "
             "yang sama dengan **app.py**."
         )
+
+    # --- Pre-import Orange secara headless ---
+    try:
+        # Import modul inti Orange tanpa menyentuh GUI
+        import Orange.data          # noqa: F401 – diperlukan agar pickle bisa resolve class
+        import Orange.tree          # noqa: F401 – TreeModel ada di sini
+        import Orange.base          # noqa: F401
+    except Exception as orange_import_err:
+        return None, (
+            f"❌ Gagal meng-import library Orange: `{orange_import_err}`\n\n"
+            "Pastikan `orange3` ada di **requirements.txt** dan Streamlit Cloud "
+            "sudah melakukan rebuild dependencies."
+        )
+
+    # --- Load pickle ---
     try:
         with open(MODEL_PATH, "rb") as f:
             model = pickle.load(f)
         return model, None
     except Exception as e:
-        return None, f"❌ Gagal memuat model: {e}"
+        return None, f"❌ Gagal memuat model: `{e}`"
 
 
 # ─────────────────────────────────────────────
