@@ -2,6 +2,3 @@ streamlit>=1.32.0
 pandas>=2.0.0
 numpy>=1.26.0
 scikit-learn>=1.4.0
-orange3>=3.36.0
-anyqt>=0.2.0
-PyQt5>=5.15.0
