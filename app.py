@@ -1,23 +1,44 @@
 import sys
+import importlib.abc
+import importlib.machinery
 from unittest.mock import MagicMock
 
 # ─────────────────────────────────────────────────────────────
-# Orange3 menggunakan Qt untuk modul widgets-nya.
-# Karena kita hanya butuh model prediksi (bukan UI Orange),
-# modul Qt-dependent di-mock agar pickle bisa di-load tanpa Qt.
+# Orange3 menggunakan Qt dan orangecanvas untuk modul widgets-nya.
+# Kita hanya butuh bagian prediksi (Orange.tree, Orange.data),
+# sehingga semua import dari orangecanvas.* dan AnyQt.*
+# di-intercept oleh custom import hook dan dikembalikan sebagai
+# MagicMock — tanpa perlu mendaftar submodule satu-persatu.
 # ─────────────────────────────────────────────────────────────
-_QT_MOCKS = [
-    "AnyQt", "AnyQt._api", "AnyQt.QtCore", "AnyQt.QtGui",
-    "AnyQt.QtWidgets", "AnyQt.QtSvg",
-    "orangecanvas", "orangecanvas.config", "orangecanvas.registry",
-    "orangecanvas.registry.discovery", "orangecanvas.registry.cache",
-    "Orange.widgets",
-    "Orange.widgets.utils",
-    "Orange.widgets.utils.colorpalettes",
-]
-for _mod in _QT_MOCKS:
-    if _mod not in sys.modules:
-        sys.modules[_mod] = MagicMock()
+
+_MOCK_PREFIXES = ("orangecanvas", "AnyQt", "Orange.widgets")
+
+
+class _AutoMockFinder(importlib.abc.MetaPathFinder):
+    """Intercept import dari namespace tertentu dan kembalikan MagicMock."""
+
+    def find_spec(self, fullname, path, target=None):
+        if any(fullname == p or fullname.startswith(p + ".") for p in _MOCK_PREFIXES):
+            return importlib.machinery.ModuleSpec(fullname, _AutoMockLoader())
+        return None
+
+
+class _AutoMockLoader(importlib.abc.Loader):
+    def create_module(self, spec):
+        mod = MagicMock()
+        mod.__name__ = spec.name
+        mod.__loader__ = self
+        mod.__package__ = spec.name.rpartition(".")[0]
+        mod.__spec__ = spec
+        mod.__path__ = []          # agar dianggap package
+        return mod
+
+    def exec_module(self, module):
+        pass                       # tidak ada kode yang perlu dieksekusi
+
+
+# Pasang finder di urutan pertama agar berjalan sebelum finder lain
+sys.meta_path.insert(0, _AutoMockFinder())
 
 import pickle
 import datetime
